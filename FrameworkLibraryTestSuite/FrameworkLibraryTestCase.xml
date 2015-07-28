@@ -1,816 +1,211 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<con:testCase failOnError="true" failTestCaseOnErrors="true" keepSession="false" maxResults="0" name="FrameworkLibraryTestCase" searchProperties="true" xmlns:con="http://eviware.com/soapui/config"><con:settings/><con:testStep type="groovy" name="SetUpScript"><con:settings/><con:config><script>import org.apache.poi.hssf.usermodel.*
-import org.apache.poi.xssf.usermodel.*
-import org.apache.poi.ss.usermodel.*
-import org.apache.poi.ss.util.*
-
-//Create data formatter
-dFormatter = new DataFormatter()
-
-//Create a new workbook using POI API
-def excelFile = context.expand( '${#TestCase#ExcelFile}' )
-context.fileName = excelFile
-
-InputStream inp = new FileInputStream(excelFile)
-srcBook = WorkbookFactory.create(inp)
-
-//Create formula evaluator to handle formula cells
-FormulaEvaluator fEval = srcBook.getCreationHelper().createFormulaEvaluator();
-
-//Get sheets for payloads 1 and 4 of the workbook (assumes these are in positions 1 and 4 of the workbook)
-//Sheet sourceSheetP1 = srcBook.getSheetAt(0)
-Sheet sourceSheetP1 = srcBook.getSheet("Payload 1")
-//Sheet sourceSheetP4 = srcBook.getSheetAt(3)
-Sheet sourceSheetP4 = srcBook.getSheet("Payload 4")
-
-//Sets row counter to 0 (first row)-- Only one row counter is needed since we want to keep the reading of P1 and p4 in parallel
-context.rowCounter = 0
-
-//Read in the contents of the first row from each sheet
-sourceRowP1 = sourceSheetP1.getRow(0)
-sourceRowP4 = sourceSheetP4.getRow(0)
-
-//while loop until - reads each column header on the Payload 1 sheet and creates a Property in the P1Properties step for it
-i=0
-while (sourceRowP1.getCell(i)!= null)
-{
-	cellVal = sourceRowP1.getCell(i)
-	//log.info cellVal
-	//testRunner.testCase.testSteps["P1Properties"].setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) )
-	testRunner.testCase.setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) )
-	//context.runner.context.MyTestCase.setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) )
-	//def myProp = context.expand( '${#T.estCase#MyProp}' )
-	//testRunner.testCase.testSteps["P1Properties"].setPropertyValue( context.expand( '${P1Properties#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) )
-	testRunner.testCase.testSteps["P1Properties"].setPropertyValue( context.expand( '${#TestCase#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) )
-	//context.runner.context.MyTestCase.testSteps["P1Properties"].setPropertyValue( context.expand( '${#TestCase#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) )
-	i++
-} 
-
-//while loop until - reads each column header on the Payload 4 sheet and creates a Property in the P4Properties step with same name as the column header
-i=0
-while (sourceRowP4.getCell(i)!= null)
-{
-	cellVal = sourceRowP4.getCell(i)
-	//log.info cellVal
-	//Was unable to directly use cellValue to set the property with the folowing - testRunner.testCase.testSteps["P4Properties"].setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) )
-	//Had to save the value to a test case property an dthen reference that as work around
-	testRunner.testCase.setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) )
-	testRunner.testCase.testSteps["P4Properties"].setPropertyValue( context.expand( '${#TestCase#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) )
-	i++
-} 
-
-//Get the first row of data from P1 and P4 sheets to be loaded to the properties just created
-sourceRowP1 = sourceSheetP1.getRow(1)
-sourceRowP4 = sourceSheetP4.getRow(1)
-
-//Iterate over each property in the P1 collection and set it to the value from the spreadsheet
-i=0
-def propertiesStep = testRunner.testCase.getTestStepByName("P1Properties")
-for( prop in propertiesStep.propertyNames )
-{
-	cellVal = sourceRowP1.getCell(i)
-	testRunner.testCase.testSteps["P1Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) )
-	//context.runner.context.MyTestCase.testSteps["P1Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) )
-   	//log.info( prop + "=" + propertiesStep.properties[prop].value )
-	i++
-}
-
-//Iterate over each property in the P4 collection and set it to the value from the spreadsheet
-i=0
-propertiesStep = testRunner.testCase.getTestStepByName("P4Properties")
-for( prop in propertiesStep.propertyNames )
-{
-	cellVal = sourceRowP4.getCell(i)
-	testRunner.testCase.testSteps["P4Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) )
-   	//log.info( prop + "=" + propertiesStep.properties[prop].value )
-	i++
-}
-
-//Define the Web Service step that will be modified
-//The following code is used to get the name of the web service being tested
-//This is done by finding the SOAP request step (the only step with a Request propoerty) and getting the step name
-def testSteps = context.testCase.getTestStepList() 
- 
-for( step in testSteps )//Defines a collection of the steps in the test case
-{	
-		stepName = step.name
-		if (stepName.indexOf("_TestRequest") > 0 ){
-			context.webServiceName = stepName
-			context.requestStep = step //save the request step obect for Validate script to clone 
-		}	
-		if (stepName.indexOf("_FullRequest") > 0 ){
-			context.fullRequestName = stepName
-		}	
-}//end for
-
-//Get the original request and save it to a Test Case Prop so it can be reset between testcases and by the Teardown script in case any repaeating nodes are added
-def request = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Request")
-//log.info request
-
-testRunner.testCase.setPropertyValue("OriginalRequest", request)
-
-</script></con:config></con:testStep><con:testStep type="groovy" name="ReadNextLine" id="c07a9c03-6d89-4958-8776-1c11603b0e81"><con:settings/><con:config><script><![CDATA[import org.apache.poi.hssf.usermodel.*
-import org.apache.poi.xssf.usermodel.*
-import org.apache.poi.ss.usermodel.*
-import org.apache.poi.ss.util.*
-
-//Create data formatter
-dFormatter = new DataFormatter()
-
-//Create a new workbook using POI API
-def excelFile = context.expand( '${#TestCase#ExcelFile}' )
-context.fileName = excelFile
-
-InputStream inp = new FileInputStream(excelFile)
-srcBook = WorkbookFactory.create(inp)
-
-//Create formula evaluator to handle formula cells
-FormulaEvaluator fEval = srcBook.getCreationHelper().createFormulaEvaluator();
-
-//Get sheets for payloads 1 and 4 of the workbook (assumes these are in positions 1 and 2 of the workbook)
-//Sheet sourceSheetP1 = srcBook.getSheetAt(0)
-Sheet sourceSheetP1 = srcBook.getSheet("Payload 1")
-//Sheet sourceSheetP4 = srcBook.getSheetAt(3)
-Sheet sourceSheetP4 = srcBook.getSheet("Payload 4")
-
-context.srcWkSheetP1 = sourceSheetP1
-context.srcWkSheetP4 = sourceSheetP4
-
-
-//Increment the rowcounter since first row of data was read via direct row reference in gerRow1(1)
-//context.rowCounter=0;
-context.rowCounter++;
-
-if(context.rowCounter<=context.srcWkSheetP1.getLastRowNum()) //Check if we've reached the last row - test will terminate if last data row is encountered
-{
-	//curTC = testRunner.testCase
-	sourceRowP1 = context.srcWkSheetP1.getRow(context.rowCounter)//Get a spreadsheet row
-	sourceRowP4 = context.srcWkSheetP4.getRow(context.rowCounter)//Get a spreadsheet row
-
-	if (dFormatter.formatCellValue(sourceRowP1.getCell(0),fEval) != "")// Checks to see if cell is empty - if it is, test will terminate
-	{
-
-		//Reset the request to the basic request
-		def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context )
-		def holder = groovyUtils.getXmlHolder(context.expand( '${#TestCase#OriginalRequest}' ))
-		testRunner.testCase.testSteps[context.webServiceName].setPropertyValue("Request", holder.xml)
-		
-		//Iterate over each property in the P1 collection and set it to the value from the spreadsheet
-		i=0
-		propertiesStep = testRunner.testCase.getTestStepByName("P1Properties")
-		for( prop in propertiesStep.propertyNames )
-		{
-			cellVal = sourceRowP1.getCell(i)
-			
-			testRunner.testCase.testSteps["P1Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) )
-			log.info( prop + "=" + propertiesStep.properties[prop].value )
-			i++
-		}
-		
-		//Iterate over each property in the P4 collection and set it to the value from the spreadsheet
-		i=0
-		//save the original request to an XmlHolder object for manipulation
-		testRequestProp = context.webServiceName + "#Request"
-		def testRequestHolder = groovyUtils.getXmlHolder( testRequestProp )				
-		fullRequestProp = context.fullRequestName + "#Request"
-		def fullRequestHolder = groovyUtils.getXmlHolder( fullRequestProp )				
-
-		propertiesStep = testRunner.testCase.getTestStepByName("P4Properties")
-		for( prop in propertiesStep.propertyNames )
-		{
-			cellVal = sourceRowP4.getCell(i)
-			testRunner.testCase.testSteps["P4Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) )
-		   	log.info( prop + "=" + propertiesStep.properties[prop].value )
-			i++
-		}
-
-		//def namespace = context.expand( '${RequestNamespaceProperties#Namespace1}' ) //This is here only to initialize the variable and set the context
-
-
-		def propertiesStepP1 = testRunner.testCase.getTestStepByName("P1Properties")
-		//For loop is used to set the proper node reference for nodes that are repeated (not unique withing the request)
-		for( prop in propertiesStepP1.propertyNames ){
-				if (prop == "TestCase" || prop == "ApplicationID" || prop == "PersonID" || prop == "ScenarioID"){ // skip the "non-node" columns
-					log.info prop
-					continue
-				}// end if (prop == "TestCase" || prop == "ApplicationID" || prop == "PersonID")
-				if (context.expand( '${P1Properties#' + prop + '}') == ""){// skip column if it does not contain a value
-					log.info prop + " has no value"
-					continue					
-				}
-				//set xpath to property name
-				xpath = prop
-				fullXpath = xpath
-				xpathArray = xpath.split("/")
-				maxXpathLevel = xpathArray.size()
-				leafNodeName = xpathArray[maxXpathLevel-1].substring(2,)
-				strTestRequestRef = '${' + context.webServiceName + '#Request}'
-				testRequestHolder = groovyUtils.getXmlHolder(context.expand( strTestRequestRef ))
-				//testRequestHolder = groovyUtils.getXmlHolder(context.expand( '${IFSV_TestRequest#Request}' ))
-				strFullRequestRef = '${' + context.fullRequestName + '#Request}'
-				fullRequestHolder = groovyUtils.getXmlHolder(context.expand( strFullRequestRef ))
-				//fullRequestHolder = groovyUtils.getXmlHolder(context.expand( '${IFSV_FullRequest#Request}' ))
-
-				//TestRequestProp = context.webServiceName + "#Request"
-				//FullRequestProp = context.fullRequestName + "#Request"
-				//testRequestHolder = groovyUtils.getXmlHolder(TestRequestProp)
-				//fullRequestHolder = groovyUtils.getXmlHolder(FullRequestProp)
-
-				testXpathLevel = maxXpathLevel
-
-				//log.info xpath
-				//check to see if full xpath is a valid node
-				while ( testRequestHolder.getDomNode(xpath) == null){
-					//if fill xpath is not found, walk back up the xpath until a node is found
-					testXpathLevel--
-					xpath = ""
-					for (x = 1; x<testXpathLevel; x++){
-						xpath = xpath + "/" + xpathArray[x]
-						
-					}// end for (x = 1; x<maxXpathLevel; x++)
-					//log.info xpath
-				}// while ( testRequestHolder.getDomNode(xpath == null)
-				//After exiting loop, xpath equals the path to the node in the tree that was found
-				xpathFound = xpath
-				xpathNodeLevelFound = testXpathLevel
-				parentNode = testRequestHolder.getDomNode(xpath)
-				def requestDoc = parentNode.getOwnerDocument()
-				
-				// create nodes from xpathNodeLevelFound to maxXpathLevel - 1
-				//If fullpath was a valid node, the for loop does not execute
-				for (y = xpathNodeLevelFound; y<= maxXpathLevel-2; y++){
-					parentNode = testRequestHolder.getDomNode(xpath)
-					nodeName = xpathArray[y]
-					//Strip instance from node name if one exists
-					if (nodeName.indexOf("[") > 0){
-						nodeName = nodeName.substring(2, nodeName.indexOf("["))
-					}// end if (nodeName.indexOf("[") > 0)
-					else{
-						nodeName = nodeName.substring(2, )
-					}// end else
-					//nodeName = nodeName.substring(0, nodeName.indexOf("["))
-					//instanceTrimArray = nodeName.split("[")
-					//nodeName = instanceTrimArray[1]
-					
-					//Get NS URI from the full request for the node you are about to create
-					fullRequestXpath = xpath + "/" + xpathArray[y]
-					while (fullRequestXpath.indexOf("[") > 0 ){
-						fullRequestXpath = fullRequestXpath.substring(0, fullRequestXpath.indexOf("[")) + fullRequestXpath.substring(fullRequestXpath.indexOf("]")+1, )
-					}
-					log.info "fullRequestHolder for getting NS = " + fullRequestHolder.xml
-					log.info "fullXpath of node ofr NS = " + fullRequestXpath
-					fullRequestNSURI = fullRequestHolder.getDomNode(fullRequestXpath).getNamespaceURI()
-					//Create new element with namespaceURI from the full request
-					//childNode = parentNode.getFirstChild()
-					log.info "fullRequestNSURI = " + fullRequestNSURI
-					def oneElement = requestDoc.createElementNS(fullRequestNSURI, nodeName)
-					log.info "oneElement = " + oneElement
-				//	if (childNode != null){
-				//		oneElement = requestDoc.createElementNS(childNode.getNamespaceURI(), nodeName)
-						//log.info "one element with childNode != null" + oneElement
-				//	}// end if (childNode != null)
-				
-					parentNode.appendChild(oneElement)
-					// write out the modified document
-					//testRequestHolder.updateProperty(true)
-					testRunner.testCase.testSteps[context.webServiceName].setPropertyValue("Request", testRequestHolder.xml)
-					xpath = xpath + "/" + xpathArray[y]
-						
-				}// end for (y = xpathNodeLevelFound; y<= maxXpathLevel-1; y++)
-				
-				
-				//if the full xpath is a valid node then the node exist and we just set the value.
-				if(xpathNodeLevelFound == maxXpathLevel){
-					testRequestHolder.setNodeValue(xpath, '${P1Properties#' + prop + '}')
-				}
-				else {
-					// else the leaf node does not exist and must be inserted properly among its siblings if there are any
-					// Go to the full request, use the xpath with no instances to see if the node exists and if it has any chi[dren
-					// create xpath w/o instances
-					while (fullXpath.indexOf("[") > 0 ){
-						fullXpath = fullXpath.substring(0, fullXpath.indexOf("[")) + fullXpath.substring(fullXpath.indexOf("]")+1, )
-					}
-					// find the leaf node in the full request, create the element (with the correct namespace) that will be inserted later
-					log.info "Full xpath = " + fullXpath
-					findNode = fullRequestHolder.getDomNode(fullXpath)
-					fullRequestNSURI = fullRequestHolder.getDomNode(fullXpath).getNamespaceURI()
-					def oneElement = requestDoc.createElementNS(fullRequestNSURI, leafNodeName)
-					
-					//get all of its parent's children (ie siblings) and determine the leaf node's position among siblings
-					log.info "Child nodes = " + findNode.getParentNode().getChildNodes()
-					children = findNode.getParentNode().getChildNodes()
-					// find leaf node's position among siblings in full request
-					j=0
-					def siblingsArray = new ArrayList()
-					for (i=0; i<=children.getLength()-1; i++){
-						//build new list without #text
-						if (children.item(i).getNodeName() != "#text" && children.item(i).getNodeName() != "#comment"){
-							endOfNS = children.item(i).getNodeName().indexOf(":")
-							siblingsArray[j++] = children.item(i).getNodeName().substring(endOfNS+1,)
-							log.info "Child Node name without //*: = " + children.item(i).getNodeName().substring(endOfNS+1,)
-							if (children.item(i).getNodeName().substring(endOfNS+1,) == leafNodeName){
-								leafNodePosition = j-1 // position of leafNode in the new list
-							}// end if (children.item(i).getNodeName() == leafNodeName)
-						}// end if (children.item(i).getNodeName() != "#text")
-					}// end for (i=0; i<=children.getLength()-1; i++)
-				
-					nodeFound = "FALSE"
-					// Create full xpath for each child in siblings array from leafNodePosition-1 down to 1, insert leaf node after the first one found and break, use namespaceURI from full request
-					leafParentNodeXpath = xpath
-					log.info leafNodePosition
-				
-					// look for a subsequent sibling from leafNodePosition+1 to siblingsArray.size(), insert leaf node before first one found and break,use namespaceURI from full request
-					for (x=leafNodePosition+1; x<=siblingsArray.size(); x++){
-						xpath = leafParentNodeXpath + "/*:" + siblingsArray[x]
-						if (testRequestHolder.getDomNode(xpath) != null){
-							//set foundSiblingNode to Node object
-							foundSiblingNode = testRequestHolder.getDomNode(xpath)
-							leafParentNode = testRequestHolder.getDomNode(leafParentNodeXpath)
-							leafNode = leafParentNode.insertBefore(oneElement, foundSiblingNode)
-							//testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, 'Wallace2')
-							//testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, '${P1Properties#' + prop + '}')
-							nodeFound = "TRUE"
-							break
-						}// end if (testRequestHolder.getDomNode(xpath) == null)
-					}// end for (x=leafNodePosition+1; x<=siblingArray.size(); x++)
-				
-					
-					// If no subsequent sibling is found, append leaf node to it's parent, use namespaceURI from full request
-					if(nodeFound != "TRUE"){
-						testRequestHolder.getDomNode(leafParentNodeXpath).appendChild(oneElement)
-						//testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, '${P1Properties#' + prop + '}')
-						//testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, 'Wallace3')
-					}// end if(nodeFound != "TRUE")
-					//Parameterize the node
-					def Node = testRequestHolder.getDomNode(leafParentNodeXpath + "/*:" + leafNodeName)
-					if (Node != null){
-						testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, '${P1Properties#' + prop + '}')
-					}// end if (Node != null)
-				}// end else - full path was not a valid node and leaf had to be added among siblings
-				
-				testRunner.testCase.testSteps[context.webServiceName].setPropertyValue("Request", testRequestHolder.xml)
-				
-		}//end for( prop in propertiesStepP1.propertyNames )				
-	} // end if (dFormatter.formatCellValue(sourceRowP1.getCell(i),fEval) != "")
-	else { // execute the Teardown script
-		//testRunner.gotoStep(8)
-		//testRunner.gotoStepByName( "TearDownScript" )
-		testRunner.gotoStepByName( "Run_TearDownScript" )
-		} 
-
-}// end if(context.rowCounter<=context.srcWkSheetP1.getLastRowNum())
-else { // execute the Teardown script
-	//testRunner.gotoStep(8)
-	//testRunner.gotoStepByName( "TearDownScript" )
-	testRunner.gotoStepByName( "Run_TearDownScript" )
-	}  
-]]></script></con:config></con:testStep><con:testStep type="groovy" name="Validate" id="3c14922f-1d36-43a5-a38d-7e8afac1b492"><con:settings/><con:config><script><![CDATA[//**************************************************************************************************************************************************
-//The following code compares each node from the Data Source_response steps to its expected result from the P4 sheet and logs the result
-def timestamp = new Date()
-//def directory = "c:\\temp"
-def directory = context.expand( '${#TestCase#ResultsFileLocation}' )
-
-//Create the results filto write to - Want to name file based on Web Service name and Sprint
-//This can be done with Global Properties or TestCase Propoerties but I need more info on how these are organized and executed
-//I have them implemented here as Project Properties for demo purposes
-def resultFile = new File(directory, "Results_Sprint" + context.expand( '${#Project#Sprint}' ) + '_' + context.expand( '${#Project#Environment}' ) + ".txt")
-
-def testCase = context.expand( '${P1Properties#ApplicationID}' )
-
-//Write the prolog info,the Request, and the Response to the results file
-//P1 sheet must have a column labeled TestCase
-resultFile.append( '------------------------------------------------------------------------------------\r\n' )
-resultFile.append( 'Web Service: ' + context.webServiceName + '	Test Case: ' + testCase + '	Runtime: ' + timestamp + '\r\n' + 'Sprint: ' + context.expand( '${#Project#Sprint}' ) + '	Environment: ' + context.expand( '${' + context.webServiceName + '#Endpoint}' ) + '\r\n' )
-resultFile.append( '------------------------------------------------------------------------------------\r\n' )
-
-// Print the request and response to the results file
-//def request = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Request")
-requestRef = context.webServiceName + "#Request" //"IFSV#Request"
-def request = context.expand( '${' + requestRef + '}' )
-
-
-//Option to create a test step for each request that has been executed, helps with troubleshooting defects later.
-//If a step does not exist with the test case name, clone the request, rename it to the testCase being executed and save the request to the Request property
-if (context.expand( '${#TestCase#GenerateRequestForEachTestCase(Y/N)}' ) == "Y" ){
-	if (testRunner.testCase.getTestStepByName(testCase) == null){
-		context.requestStep = testRunner.testCase.getTestStepByName(context.webServiceName)
-		context.requestStep.clone(testRunner.testCase, testCase)
-		testRunner.testCase.getTestStepByName( testCase ).disabled = true
-	}// end if (testRunner.testCase.getTestStepByName(testCase) == null)
-	
-	testRunner.testCase.testSteps[testCase].setPropertyValue("Request", request)
-}// endif (GenerateRequestForEachTestCase(Y/N) == "Y")
-
-      
-
-def response = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Response")
-resultFile.append('REQUEST:\r\n'+ request + '\r\n\r\n' )
-resultFile.append('RESPONSE:\r\n'+ response + '\r\n\r\n' )
-
-
-def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context )
-def holder = groovyUtils.getXmlHolder(response)
-log.info holder
-
-
-//Get the list of the properties from th P4 worksheet that need to be validated
-def propertiesStepP4 = testRunner.testCase.getTestStepByName("P4Properties")
-//Get the value of Namespace variable from the Test Case Properties
-def namespace = context.expand( '${ResponseNamespaceProperties#Namespace1}' ) //This is here onlky to initialize the variable and set the context
-
-
-// Some services require special processin to properly identify the nodes for validation
-// Those which do not are handled by the default case which just looks for the node named the same as the column header.
-
-	switch ( context.webServiceName ) {
-
-		case "ESIMEC_TestRequest":
-			log.info "Default case"
-			//Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result
-			i=0
-			for( prop in propertiesStepP4.propertyNames )
-			{
-				def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop)
-				if (expVal != "" && prop.toUpperCase() != "APPLICATIONID" && prop.toUpperCase() != "PERSONID"){  //Do not do any validation of empty cells or ApplicationID
-					def nodeNameArr = prop.split(/>/)
-					arrSize = nodeNameArr.size()
-					if (arrSize > 1){
-						if (nodeNameArr[0] == "StartDate"){
-							propNode = "StartDate//*:Date"
-						}
-						if (nodeNameArr[0] == "EndDate"){
-							propNode = "EndDate//*:Date"
-						}
-					}
-					else
-					{
-						propNode = prop
-					}
-					if (nodeNameArr[0] == "EmployeePremiumAmount"){
-						propNode = "EmployeePremiumAmount//*:InsurancePremiumAmount"
-					}
-					if (nodeNameArr[0] == "FamilyPremiumAmount"){
-						propNode = "FamilyPremiumAmount//*:InsurancePremiumAmount"
-					}
-					
-					//Test for multiple instances of data
-					nodeNameArr = propNode.split(/_/)
-					arrSize = nodeNameArr.size()
-					if (arrSize > 1)
-						propNode = "//*:" + nodeNameArr[0] + '[' + nodeNameArr[1] + ']' //Node name with istance converted to bracketed number
-					else
-						propNode = "//*:" + nodeNameArr[0]
-			
-					boolean nodeNotFound = true	
-					def Node = holder.getDomNode(propNode)
-					if (Node != null)
-					{
-						actualVal = holder.getNodeValue(propNode)
-						log.info "Node found, Actual value is: " + actualVal
-						nodeNotFound = false
-					}//end if	(Node != null)
-
-					if (nodeNotFound)
-						{actualVal = "Node not found"}
-					
-					if (actualVal == "Node not found")
-					{
-						resultFile.append('\r\nMANUAL	' + prop + '	Expected: '+ expVal + '\r\n')
-					}// end if (actualVal == "Node not found")
-					else
-					{
-						
-						if (expVal != actualVal )
-							{
-								resultFile.append('\r\nFAIL	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-						if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" )
-							{
-								resultFile.append('\r\nPASS	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-					}// end else
-				
-				} // end if (expVal != ""){	
-			} // end for( prop in propertiesStepP4.propertyNames )
-
-			break //end case ESIMEC
-		
-		case "NonESIMEC_TestRequest":
-			//log.info "NonESIMEC case"
-			//Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result
-			//i=0
-			def orgCounter = 0
-			def lastOrgName = ""
-			def orgInstance = 0
-			for( prop in propertiesStepP4.propertyNames )
-			{
-				def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop)
-				if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){  //Do not do any validation of empty cells or ApplicationID
-					def nodeNameArr = prop.split(/>/)
-					arrSize = nodeNameArr.size()
-					if (arrSize == 3){
-						propNode = "//*:" + nodeNameArr[2] //Node name plus instance, if any
-					}
-					if (arrSize == 2){
-						propNode = "//*:" + nodeNameArr[1] //Node name plus instance, if any
-					}
-					if (arrSize == 1){
-						propNode = "//*:" + prop
-					}
-					
-					//Test for Organization Name node
-					if (propNode == "//*:OrganizationCode"){
-						//orgCounter++
-						def Nodes = holder.getDomNodes("//*:OtherCoverage/*:OrganizationCode")
-						noOfOrgs = Nodes.size()
-						log.info "noOfOrgs = " + noOfOrgs
-						for (x=1; x<=noOfOrgs; x++) {
-							orgNodeValue = holder.getNodeValue("//*:OtherCoverage[" + x + "]/*:OrganizationCode")
-							if (nodeNameArr[0] == orgNodeValue) {
-								orgInstance = x
-								break
-							}// end if (orgName == orgNodeValue)
-						}// end for (int x=1, x<=noOfOrgs, x++)						
-						lastOrgName = nodeNameArr[0]
-					}// end if (propNode == "//*:OrganizationCode")
-					if (nodeNameArr[0] == lastOrgName){
-						//get collection of nodes that match and then validate the array element subscript equal to orgInstance
-						//propNode =  "//*:OtherCoverage[" + orgInstance + "]" + (propNode - "/") //xpath to the correct instance of OtherCoverage
-						propNode =  "//*:OtherCoverage[" + orgInstance + "]" + (propNode) //xpath to the correct instance of OtherCoverage
-						//Special path for the Insurnace effective and end dat nodes
-						//Test for nodeNameArr[1] contains "InsuranceEffectiveDate".  If so, build correct //*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date xpath
-						//Do same for InsurnaceEndDate
-						containsSubstring = nodeNameArr[1].indexOf("InsuranceEffectiveDate")
-						if (containsSubstring != -1){
-							//get insurnaceInstance from nodeNameArr[1]
-							insuranceArr = nodeNameArr[1].split(/_/)
-							insuranceInstance = insuranceArr[1]
-							propNode = "//*:OtherCoverage[" + orgInstance + "]" + "/*:MECCoverage/*:Insurance[" + insuranceInstance + "]//*:InsuranceEffectiveDate/*:Date"
-							//propNode = "//*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date"
-						}// end if (containsSubstring != -1)
-						containsSubstring = nodeNameArr[1].indexOf("InsuranceEndDate")
-						if (containsSubstring != -1){
-							//get insurnaceInstance from nodeNameArr[1]
-							insuranceArr = nodeNameArr[1].split(/_/)
-							insuranceInstance = insuranceArr[1]
-							propNode = "//*:OtherCoverage[" + orgInstance + "]" + "/*:MECCoverage/*:Insurance[" + insuranceInstance + "]//*:InsuranceEndDate/*:Date"
-							//propNode = "//*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date"
-						}//end if (containsSubstring != -1)
-					
-					}// end if (nodeNameArr[0] == lastOrgName)
-
-
-					
-					
-					//log.info "propNode xpath = " + propNode			
-					boolean nodeNotFound = true	
-					def Node = holder.getDomNode(propNode)
-					if (Node != null)
-					{
-						actualVal = holder.getNodeValue(propNode)
-						log.info "Node found, Actual value is: " + actualVal
-						nodeNotFound = false
-					}//end if	(Node != null)
-					if (nodeNotFound)
-						{actualVal = "Node not found"}
-					
-					if (actualVal == "Node not found")
-					{
-						resultFile.append('\r\nMANUAL	' + prop + '	Expected: '+ expVal + '\r\n')
-					}// end if (actualVal == "Node not found")
-					else
-					{
-						
-						if (expVal != actualVal )
-							{
-								resultFile.append('\r\nFAIL	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-						if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" )
-							{
-								resultFile.append('\r\nPASS	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-					}// end else
-				
-				} // end if (expVal != ""){	
-			} // end for( prop in propertiesStepP4.propertyNames )
-
-			
-			break //end  case "NonESIMEC":
-
-		case "IFSV_TestRequest":
-			log.info "IFSV case"
-			//Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result
-			//Need values from the ReadNextLine script to tell me the order and type of applicants
-			//ie an array context.ApplicantTypeArr that shows PRIMARY, SPOUSE, DEPENDENT, PRIMARY, DEPENDENT
-			lastApplicantInstance = 0
-			applicantNodeInstance = 0
-			dependentNodeInstance = 0
-			noOfApplicants = context.ApplicantTypeArr.size()
-			log.info "noOfApplicants = " + noOfApplicants
-			for( prop in propertiesStepP4.propertyNames )
-			{
-				def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop)
-				if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){  //Do not do any validation of empty cells or ApplicationID
-					//As I traverse the properties, check value of TaxFilerCategoryCode.
-					//For each Primary or Spouse, increment the instance for ApplicantVerification node
-					//For each Dependent, increment the instance of DependentVerification node
-					def nodeNameArr = prop.split(/_/)
-					arrSize = nodeNameArr.size()
-					//if arrSize = nodeNameArr.size()
-					if (arrSize == 1){
-						propNode = "//*:" + prop
-					}// end if (arrSize == 1)
-					else {
-						if (nodeNameArr[1].toInteger() <= noOfApplicants && nodeNameArr[1].toInteger() != lastApplicantInstance ){
-							lastApplicantInstance++
-							//applicantType = context.ApplicantTypeArr[lastApplicantInstance]
-							applicantType = context.ApplicantTypeArr[nodeNameArr[1].toInteger()-1]
-							if (applicantType == "PRIMARY" || applicantType == "SPOUSE"){
-								applicantNodeInstance++
-							}// end if (applicantType == "PRIMARY" || applicantType == "SPOUSE")
-							if (applicantType == "DEPENDENT"){
-								dependentNodeInstance++
-							}// end if (applicantType == "DEPENDENT")
-						}//end if (nodeNameArr[1] <= noOfApplicants)
-						if (applicantType == "PRIMARY" || applicantType == "SPOUSE"){
-							propNode = "//*:ApplicantVerification[" + applicantNodeInstance + "]//*:" + nodeNameArr[0]
-							if (nodeNameArr[0] == "SpouseTINIdentification"){
-								propNode = "//*:ApplicantVerification[" + applicantNodeInstance + "]//*:SpouseTaxFiler//*:TINIdentification"
-							}// end if (nodeNameArr[0] == "SpouseTINIdentification")
-						}// end if (applicantType == "PRIMARY" || applicantType == "SPOUSE")
-						if (applicantType == "DEPENDENT"){
-							propNode = "//*:DependentVerification[" + dependentNodeInstance + "]//*:" + nodeNameArr[0]
-							if (nodeNameArr[0] == "SpouseTINIdentification"){
-								propNode = "//*:DependentVerification[" + dependentNodeInstance + "]//*:SpouseTaxFiler//*:TINIdentification"
-							}// end if (nodeNameArr[0] == "SpouseTINIdentification")
-						}// end if (applicantType == "DEPENDENT")
-						
-					}// end else
-					boolean nodeNotFound = true	
-					def Node = holder.getDomNode(propNode)
-					if (Node != null)
-					{
-						actualVal = holder.getNodeValue(propNode)
-						log.info "Node found, Actual value is: " + actualVal
-						nodeNotFound = false
-					}//end if	(Node != null)
-					if (nodeNotFound)
-						{actualVal = "Node not found"}
-					
-					if (actualVal == "Node not found")
-					{
-						resultFile.append('\r\nMANUAL	' + prop + '	Expected: '+ expVal + '\r\n')
-					}// end if (actualVal == "Node not found")
-					else
-					{
-						
-						if (expVal != actualVal )
-							{
-								resultFile.append('\r\nFAIL	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-						if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" )
-							{
-								resultFile.append('\r\nPASS	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-					}// end else
-				
-				} // end if (expVal != ""){	
-			} // end for( prop in propertiesStepP4.propertyNames )
-		
-			break //end  case "NonESIMEC":
-
-			
-		default:
-			log.info "Default case"
-			//Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result
-			i=0
-			for( prop in propertiesStepP4.propertyNames )
-			{
-				def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop)
-				if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){  //Do not do any validation of empty cells or ApplicationID
-					def nodeNameArr = prop.split(/>/)
-					arrSize = nodeNameArr.size()
-					if (arrSize > 1){
-						propNode = nodeNameArr[1] //Node name plus instance, if any
-					}
-					else
-					{
-						propNode = prop
-					}
-					//Test for multiple instances of data
-					nodeNameArr = propNode.split(/_/)
-					arrSize = nodeNameArr.size()
-					if (arrSize > 1)
-						propNode = nodeNameArr[0] + '[' + nodeNameArr[1] + ']' //Node name with istance converted to bracketed number
-					else
-						propNode = nodeNameArr[0]
-			
-					def namespacePropertiesStep = testRunner.testCase.getTestStepByName("ResponseNamespaceProperties")
-					//for loop builds a string to declare all the namespaces in the response
-					//strAllNamespaces = "declare namespace ns1='http://aptc.dsh.cms.gov/exchange/1.0'; declare namespace ns2='http://hix.cms.gov/0.1/hix-core'; declare namespace ns3='http://aptc.dsh.cms.gov/extension/1.0'; declare namespace ns4='http://hix.cms.gov/0.1/hix-ee'; "
-					countNamespaces = 1
-					strAllNamespaces = ""
-					for( nsProp in namespacePropertiesStep.propertyNames )
-					{
-						namespace = context.expand( '${ResponseNamespaceProperties#' + nsProp + '}' )
-						strAllNamespaces = strAllNamespaces + "declare namespace ns" + countNamespaces + "=" + namespace + "; "
-						//log.info strAllNamespaces
-						countNamespaces++
-					}// end for( nsProp in namespacePropertiesStep.propertyNames )
-						
-					//for loop cycles through each namespace reference until it finds the node - sets flag if nodeNotFound flag to false if not found
-					boolean nodeNotFound = true	
-					for (int j = 1; j < countNamespaces; j++)
-					{
-							//def Node = holder.getDomNode(strAllNamespaces + "//ns" + j + ":" + prop)
-							def Node = holder.getDomNode(strAllNamespaces + "//ns" + j + ":" + propNode)
-							if (Node != null)
-							{
-								//actualVal = holder.getNodeValue(strAllNamespaces + "//ns" + j + ":" + prop)
-								actualVal = holder.getNodeValue(strAllNamespaces + "//ns" + j + ":" + propNode)
-								//log.info "Node found, Actual value is: " + actualVal
-								nodeNotFound = false
-								break
-							}//end if	(Node != null)
-					}// end for (int j = 1; j < countNamespaces; j++)
-					if (nodeNotFound)
-						{actualVal = "Node not found"}
-					
-					if (actualVal == "Node not found")
-					{
-						resultFile.append('\r\nMANUAL	' + prop + '	Expected: '+ expVal + '\r\n')
-					}// end if (actualVal == "Node not found")
-					else
-					{
-						
-						if (expVal != actualVal )
-							{
-								resultFile.append('\r\nFAIL	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-						if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" )
-							{
-								resultFile.append('\r\nPASS	Element: ' + prop + '	Expected: '+ expVal + '	Actual: ' + actualVal + '\r\n')
-							}
-					}// end else
-				
-				} // end if (expVal != ""){	
-			} // end for( prop in propertiesStepP4.propertyNames )
-	
-	
-	}// end switch ( context.webServiceName ) {
-
-\
-//The following is the results reporting code
-			    
-
-resultFile.append('\r\n')
-
-//testRunner.gotoStep(1)
-testRunner.gotoStepByName( "Run_ReadNextLine" )]]></script></con:config></con:testStep><con:testStep type="groovy" name="TearDownScript"><con:settings/><con:config><script>//The following teardown script deletes all of the properties from P1Properties and P4Properies steps
-//If all the column headers are correct and do not change, this is not necessary.
-//For debugging, thi scan be commented out so that the property values can be viewed at the end of the run
-
-i=0
-def propertiesStep = testRunner.testCase.getTestStepByName("P1Properties")
-for( prop in propertiesStep.propertyNames )
-{
-	//cellVal = sourceRowP1.getCell(i)
-	testRunner.testCase.testSteps["P1Properties"].removeProperty( prop )
-	i++
-}
-
-//Iterate over each property in the P4 collection remove it
-i=0
-propertiesStep = testRunner.testCase.getTestStepByName("P4Properties")
-for( prop in propertiesStep.propertyNames )
-{
-	//cellVal = sourceRowP4.getCell(i)
-	testRunner.testCase.testSteps["P4Properties"].removeProperty( prop )
-	i++
-}
-
-//The following code resets the request to the original request in case repeating nodes have been added
-
-def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context )
-//def originalRequest = context.expand( '${#TestCase#OriginalRequest}' )
-
-def holder = groovyUtils.getXmlHolder(context.expand( '${#TestCase#OriginalRequest}' ))
-def testSteps = context.testCase.getTestStepList() 
-def FoundIt = "FALSE" 
-for( step in testSteps )//Defines a collection of the steps in the test case
-{	
-	def properties = testRunner.testCase.getTestStepByName(step.name)//Defines a collection of the properties for the current test case step from the outer for
-	for( prop in properties.propertyNames )
-	{
-		if (prop == "Request"){
-			webServiceName = step.name
-			FoundIt = "TRUE"
-			log.info 'Found it ' + webServiceName
-			break
-		}//endif
-	}//end for
-	if (FoundIt == "TRUE") break	
-}//end for
-
-testRunner.testCase.testSteps[webServiceName].setPropertyValue("Request", holder.xml)
-</script></con:config></con:testStep><con:testStep type="properties" name="P1Properties" disabled="true"><con:settings/><con:config xsi:type="con:PropertiesStep" saveFirst="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><con:properties/></con:config></con:testStep><con:testStep type="properties" name="P4Properties" disabled="true"><con:settings/><con:config xsi:type="con:PropertiesStep" saveFirst="true" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"><con:properties/></con:config></con:testStep><con:setupScript/><con:tearDownScript/><con:properties><con:property><con:name>ExcelFile</con:name><con:value/></con:property><con:property><con:name>ResultsFileLocation</con:name><con:value>C:\temp</con:value></con:property><con:property><con:name>GenerateRequestForEachTestCase(Y/N)</con:name><con:value>N</con:value></con:property><con:property><con:name>ReportExceptionsOnly(Y/N)</con:name><con:value>N</con:value></con:property></con:properties><con:reportParameters/><con:breakPoints><con:testStepId>d784dcd4-384b-4e22-8451-5be176612644</con:testStepId><con:status>NONE</con:status><con:properties/></con:breakPoints><con:breakPoints><con:testStepId>914d9e16-cd3f-47ec-88e0-edcbfa9f097c</con:testStepId><con:status>NONE</con:status><con:properties/></con:breakPoints><con:breakPoints><con:testStepId>c07a9c03-6d89-4958-8776-1c11603b0e81</con:testStepId><con:status>NONE</con:status><con:properties/></con:breakPoints><con:breakPoints><con:testStepId>3c14922f-1d36-43a5-a38d-7e8afac1b492</con:testStepId><con:status>NONE</con:status><con:properties/></con:breakPoints></con:testCase>
+
+-<con:testCase xmlns:con="http://eviware.com/soapui/config" searchProperties="true" name="FrameworkLibraryTestCase" maxResults="0" keepSession="false" failTestCaseOnErrors="true" failOnError="true">
+
+<con:settings/>
+
+
+-<con:testStep name="SetUpScript" type="groovy">
+
+<con:settings/>
+
+
+-<con:config>
+
+<script>import org.apache.poi.hssf.usermodel.* import org.apache.poi.xssf.usermodel.* import org.apache.poi.ss.usermodel.* import org.apache.poi.ss.util.* //Create data formatter dFormatter = new DataFormatter() //Create a new workbook using POI API def excelFile = context.expand( '${#TestCase#ExcelFile}' ) context.fileName = excelFile InputStream inp = new FileInputStream(excelFile) srcBook = WorkbookFactory.create(inp) //Create formula evaluator to handle formula cells FormulaEvaluator fEval = srcBook.getCreationHelper().createFormulaEvaluator(); //Get sheets for payloads 1 and 4 of the workbook (assumes these are in positions 1 and 4 of the workbook) //Sheet sourceSheetP1 = srcBook.getSheetAt(0) Sheet sourceSheetP1 = srcBook.getSheet("Payload 1") //Sheet sourceSheetP4 = srcBook.getSheetAt(3) Sheet sourceSheetP4 = srcBook.getSheet("Payload 4") //Sets row counter to 0 (first row)-- Only one row counter is needed since we want to keep the reading of P1 and p4 in parallel context.rowCounter = 0 //Read in the contents of the first row from each sheet sourceRowP1 = sourceSheetP1.getRow(0) sourceRowP4 = sourceSheetP4.getRow(0) //while loop until - reads each column header on the Payload 1 sheet and creates a Property in the P1Properties step for it i=0 while (sourceRowP1.getCell(i)!= null) { cellVal = sourceRowP1.getCell(i) //log.info cellVal //testRunner.testCase.testSteps["P1Properties"].setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) ) testRunner.testCase.setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) ) //context.runner.context.MyTestCase.setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) ) //def myProp = context.expand( '${#T.estCase#MyProp}' ) //testRunner.testCase.testSteps["P1Properties"].setPropertyValue( context.expand( '${P1Properties#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) ) testRunner.testCase.testSteps["P1Properties"].setPropertyValue( context.expand( '${#TestCase#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) ) //context.runner.context.MyTestCase.testSteps["P1Properties"].setPropertyValue( context.expand( '${#TestCase#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) ) i++ } //while loop until - reads each column header on the Payload 4 sheet and creates a Property in the P4Properties step with same name as the column header i=0 while (sourceRowP4.getCell(i)!= null) { cellVal = sourceRowP4.getCell(i) //log.info cellVal //Was unable to directly use cellValue to set the property with the folowing - testRunner.testCase.testSteps["P4Properties"].setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) ) //Had to save the value to a test case property an dthen reference that as work around testRunner.testCase.setPropertyValue( "cellValue" , dFormatter.formatCellValue(cellVal,fEval) ) testRunner.testCase.testSteps["P4Properties"].setPropertyValue( context.expand( '${#TestCase#cellValue}' ), dFormatter.formatCellValue(cellVal,fEval) ) i++ } //Get the first row of data from P1 and P4 sheets to be loaded to the properties just created sourceRowP1 = sourceSheetP1.getRow(1) sourceRowP4 = sourceSheetP4.getRow(1) //Iterate over each property in the P1 collection and set it to the value from the spreadsheet i=0 def propertiesStep = testRunner.testCase.getTestStepByName("P1Properties") for( prop in propertiesStep.propertyNames ) { cellVal = sourceRowP1.getCell(i) testRunner.testCase.testSteps["P1Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) ) //context.runner.context.MyTestCase.testSteps["P1Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) ) //log.info( prop + "=" + propertiesStep.properties[prop].value ) i++ } //Iterate over each property in the P4 collection and set it to the value from the spreadsheet i=0 propertiesStep = testRunner.testCase.getTestStepByName("P4Properties") for( prop in propertiesStep.propertyNames ) { cellVal = sourceRowP4.getCell(i) testRunner.testCase.testSteps["P4Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) ) //log.info( prop + "=" + propertiesStep.properties[prop].value ) i++ } //Define the Web Service step that will be modified //The following code is used to get the name of the web service being tested //This is done by finding the SOAP request step (the only step with a Request propoerty) and getting the step name def testSteps = context.testCase.getTestStepList() for( step in testSteps )//Defines a collection of the steps in the test case { stepName = step.name if (stepName.indexOf("_TestRequest") > 0 ){ context.webServiceName = stepName context.requestStep = step //save the request step obect for Validate script to clone } if (stepName.indexOf("_FullRequest") > 0 ){ context.fullRequestName = stepName } }//end for //Get the original request and save it to a Test Case Prop so it can be reset between testcases and by the Teardown script in case any repaeating nodes are added def request = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Request") //log.info request testRunner.testCase.setPropertyValue("OriginalRequest", request) </script>
+
+</con:config>
+
+</con:testStep>
+
+
+-<con:testStep name="ReadNextLine" type="groovy" id="c07a9c03-6d89-4958-8776-1c11603b0e81">
+
+<con:settings/>
+
+
+-<con:config>
+
+
+-<script>
+
+<![CDATA[import org.apache.poi.hssf.usermodel.* import org.apache.poi.xssf.usermodel.* import org.apache.poi.ss.usermodel.* import org.apache.poi.ss.util.* //Create data formatter dFormatter = new DataFormatter() //Create a new workbook using POI API def excelFile = context.expand( '${#TestCase#ExcelFile}' ) context.fileName = excelFile InputStream inp = new FileInputStream(excelFile) srcBook = WorkbookFactory.create(inp) //Create formula evaluator to handle formula cells FormulaEvaluator fEval = srcBook.getCreationHelper().createFormulaEvaluator(); //Get sheets for payloads 1 and 4 of the workbook (assumes these are in positions 1 and 2 of the workbook) //Sheet sourceSheetP1 = srcBook.getSheetAt(0) Sheet sourceSheetP1 = srcBook.getSheet("Payload 1") //Sheet sourceSheetP4 = srcBook.getSheetAt(3) Sheet sourceSheetP4 = srcBook.getSheet("Payload 4") context.srcWkSheetP1 = sourceSheetP1 context.srcWkSheetP4 = sourceSheetP4 //Increment the rowcounter since first row of data was read via direct row reference in gerRow1(1) //context.rowCounter=0; context.rowCounter++; if(context.rowCounter<=context.srcWkSheetP1.getLastRowNum()) //Check if we've reached the last row - test will terminate if last data row is encountered { //curTC = testRunner.testCase sourceRowP1 = context.srcWkSheetP1.getRow(context.rowCounter)//Get a spreadsheet row sourceRowP4 = context.srcWkSheetP4.getRow(context.rowCounter)//Get a spreadsheet row if (dFormatter.formatCellValue(sourceRowP1.getCell(0),fEval) != "")// Checks to see if cell is empty - if it is, test will terminate { //Reset the request to the basic request def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context ) def holder = groovyUtils.getXmlHolder(context.expand( '${#TestCase#OriginalRequest}' )) testRunner.testCase.testSteps[context.webServiceName].setPropertyValue("Request", holder.xml) //Iterate over each property in the P1 collection and set it to the value from the spreadsheet i=0 propertiesStep = testRunner.testCase.getTestStepByName("P1Properties") for( prop in propertiesStep.propertyNames ) { cellVal = sourceRowP1.getCell(i) testRunner.testCase.testSteps["P1Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) ) //log.info( prop + "=" + propertiesStep.properties[prop].value ) i++ } //Iterate over each property in the P4 collection and set it to the value from the spreadsheet i=0 //save the original request to an XmlHolder object for manipulation testRequestProp = context.webServiceName + "#Request" def testRequestHolder = groovyUtils.getXmlHolder( testRequestProp ) fullRequestProp = context.fullRequestName + "#Request" def fullRequestHolder = groovyUtils.getXmlHolder( fullRequestProp ) propertiesStep = testRunner.testCase.getTestStepByName("P4Properties") for( prop in propertiesStep.propertyNames ) { cellVal = sourceRowP4.getCell(i) testRunner.testCase.testSteps["P4Properties"].setPropertyValue( prop, dFormatter.formatCellValue(cellVal,fEval) ) //log.info( prop + "=" + propertiesStep.properties[prop].value ) i++ } //def namespace = context.expand( '${RequestNamespaceProperties#Namespace1}' ) //This is here only to initialize the variable and set the context def propertiesStepP1 = testRunner.testCase.getTestStepByName("P1Properties") //For loop is used to set the proper node reference for nodes that are repeated (not unique withing the request) for( prop in propertiesStepP1.propertyNames ){ if (prop == "TestCase" || prop == "ApplicationID" || prop == "PersonID" || prop == "ScenarioID"){ // skip the "non-node" columns log.info prop continue }// end if (prop == "TestCase" || prop == "ApplicationID" || prop == "PersonID") if (context.expand( '${P1Properties#' + prop + '}') == ""){// skip column if it does not contain a value log.info prop + " has no value" continue } //set xpath to property name xpath = prop fullXpath = xpath xpathArray = xpath.split("/") maxXpathLevel = xpathArray.size() leafNodeName = xpathArray[maxXpathLevel-1].substring(2,) strTestRequestRef = '${' + context.webServiceName + '#Request}' testRequestHolder = groovyUtils.getXmlHolder(context.expand( strTestRequestRef )) //testRequestHolder = groovyUtils.getXmlHolder(context.expand( '${IFSV_TestRequest#Request}' )) strFullRequestRef = '${' + context.fullRequestName + '#Request}' fullRequestHolder = groovyUtils.getXmlHolder(context.expand( strFullRequestRef )) //fullRequestHolder = groovyUtils.getXmlHolder(context.expand( '${IFSV_FullRequest#Request}' )) //TestRequestProp = context.webServiceName + "#Request" //FullRequestProp = context.fullRequestName + "#Request" //testRequestHolder = groovyUtils.getXmlHolder(TestRequestProp) //fullRequestHolder = groovyUtils.getXmlHolder(FullRequestProp) testXpathLevel = maxXpathLevel //log.info xpath //check to see if full xpath is a valid node while ( testRequestHolder.getDomNode(xpath) == null){ //if fill xpath is not found, walk back up the xpath until a node is found testXpathLevel-- xpath = "" for (x = 1; x<testXpathLevel; x++){ xpath = xpath + "/" + xpathArray[x] }// end for (x = 1; x<maxXpathLevel; x++) //log.info xpath }// while ( testRequestHolder.getDomNode(xpath == null) //After exiting loop, xpath equals the path to the node in the tree that was found xpathFound = xpath xpathNodeLevelFound = testXpathLevel parentNode = testRequestHolder.getDomNode(xpath) def requestDoc = parentNode.getOwnerDocument() // create nodes from xpathNodeLevelFound to maxXpathLevel - 1 //If fullpath was a valid node, the for loop does not execute for (y = xpathNodeLevelFound; y<= maxXpathLevel-2; y++){ parentNode = testRequestHolder.getDomNode(xpath) nodeName = xpathArray[y] //Strip instance from node name if one exists if (nodeName.indexOf("[") > 0){ nodeName = nodeName.substring(2, nodeName.indexOf("[")) }// end if (nodeName.indexOf("[") > 0) else{ nodeName = nodeName.substring(2, ) }// end else //nodeName = nodeName.substring(0, nodeName.indexOf("[")) //instanceTrimArray = nodeName.split("[") //nodeName = instanceTrimArray[1] //Get NS URI from the full request for the node you are about to create fullRequestXpath = xpath + "/" + xpathArray[y] while (fullRequestXpath.indexOf("[") > 0 ){ fullRequestXpath = fullRequestXpath.substring(0, fullRequestXpath.indexOf("[")) + fullRequestXpath.substring(fullRequestXpath.indexOf("]")+1, ) } log.info "fullRequestHolder for getting NS = " + fullRequestHolder.xml log.info "fullXpath of node ofr NS = " + fullRequestXpath fullRequestNSURI = fullRequestHolder.getDomNode(fullRequestXpath).getNamespaceURI() //Create new element with namespaceURI from the full request //childNode = parentNode.getFirstChild() log.info "fullRequestNSURI = " + fullRequestNSURI def oneElement = requestDoc.createElementNS(fullRequestNSURI, nodeName) log.info "oneElement = " + oneElement // if (childNode != null){ // oneElement = requestDoc.createElementNS(childNode.getNamespaceURI(), nodeName) //log.info "one element with childNode != null" + oneElement // }// end if (childNode != null) parentNode.appendChild(oneElement) // write out the modified document //testRequestHolder.updateProperty(true) testRunner.testCase.testSteps[context.webServiceName].setPropertyValue("Request", testRequestHolder.xml) xpath = xpath + "/" + xpathArray[y] }// end for (y = xpathNodeLevelFound; y<= maxXpathLevel-1; y++) //if the full xpath is a valid node then the node exist and we just set the value. if(xpathNodeLevelFound == maxXpathLevel){ testRequestHolder.setNodeValue(xpath, '${P1Properties#' + prop + '}') } else { // else the leaf node does not exist and must be inserted properly among its siblings if there are any // Go to the full request, use the xpath with no instances to see if the node exists and if it has any chi[dren // create xpath w/o instances while (fullXpath.indexOf("[") > 0 ){ fullXpath = fullXpath.substring(0, fullXpath.indexOf("[")) + fullXpath.substring(fullXpath.indexOf("]")+1, ) } // find the leaf node in the full request, create the element (with the correct namespace) that will be inserted later log.info "Full xpath = " + fullXpath findNode = fullRequestHolder.getDomNode(fullXpath) fullRequestNSURI = fullRequestHolder.getDomNode(fullXpath).getNamespaceURI() def oneElement = requestDoc.createElementNS(fullRequestNSURI, leafNodeName) //get all of its parent's children (ie siblings) and determine the leaf node's position among siblings log.info "Child nodes = " + findNode.getParentNode().getChildNodes() children = findNode.getParentNode().getChildNodes() // find leaf node's position among siblings in full request j=0 def siblingsArray = new ArrayList() for (i=0; i<=children.getLength()-1; i++){ //build new list without #text if (children.item(i).getNodeName() != "#text" && children.item(i).getNodeName() != "#comment"){ endOfNS = children.item(i).getNodeName().indexOf(":") siblingsArray[j++] = children.item(i).getNodeName().substring(endOfNS+1,) log.info "Child Node name without //*: = " + children.item(i).getNodeName().substring(endOfNS+1,) if (children.item(i).getNodeName().substring(endOfNS+1,) == leafNodeName){ leafNodePosition = j-1 // position of leafNode in the new list }// end if (children.item(i).getNodeName() == leafNodeName) }// end if (children.item(i).getNodeName() != "#text") }// end for (i=0; i<=children.getLength()-1; i++) nodeFound = "FALSE" // Create full xpath for each child in siblings array from leafNodePosition-1 down to 1, insert leaf node after the first one found and break, use namespaceURI from full request leafParentNodeXpath = xpath log.info leafNodePosition // look for a subsequent sibling from leafNodePosition+1 to siblingsArray.size(), insert leaf node before first one found and break,use namespaceURI from full request for (x=leafNodePosition+1; x<=siblingsArray.size(); x++){ xpath = leafParentNodeXpath + "/*:" + siblingsArray[x] if (testRequestHolder.getDomNode(xpath) != null){ //set foundSiblingNode to Node object foundSiblingNode = testRequestHolder.getDomNode(xpath) leafParentNode = testRequestHolder.getDomNode(leafParentNodeXpath) leafNode = leafParentNode.insertBefore(oneElement, foundSiblingNode) //testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, 'Wallace2') //testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, '${P1Properties#' + prop + '}') nodeFound = "TRUE" break }// end if (testRequestHolder.getDomNode(xpath) == null) }// end for (x=leafNodePosition+1; x<=siblingArray.size(); x++) // If no subsequent sibling is found, append leaf node to it's parent, use namespaceURI from full request if(nodeFound != "TRUE"){ testRequestHolder.getDomNode(leafParentNodeXpath).appendChild(oneElement) //testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, '${P1Properties#' + prop + '}') //testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, 'Wallace3') }// end if(nodeFound != "TRUE") //Parameterize the node def Node = testRequestHolder.getDomNode(leafParentNodeXpath + "/*:" + leafNodeName) if (Node != null){ testRequestHolder.setNodeValue(leafParentNodeXpath + "/*:" + leafNodeName, '${P1Properties#' + prop + '}') }// end if (Node != null) }// end else - full path was not a valid node and leaf had to be added among siblings testRunner.testCase.testSteps[context.webServiceName].setPropertyValue("Request", testRequestHolder.xml) }//end for( prop in propertiesStepP1.propertyNames ) } // end if (dFormatter.formatCellValue(sourceRowP1.getCell(i),fEval) != "") else { // execute the Teardown script //testRunner.gotoStep(8) //testRunner.gotoStepByName( "TearDownScript" ) testRunner.gotoStepByName( "Run_TearDownScript" ) } }// end if(context.rowCounter<=context.srcWkSheetP1.getLastRowNum()) else { // execute the Teardown script //testRunner.gotoStep(8) //testRunner.gotoStepByName( "TearDownScript" ) testRunner.gotoStepByName( "Run_TearDownScript" ) } ]]>
+
+</script>
+
+</con:config>
+
+</con:testStep>
+
+
+-<con:testStep name="Validate" type="groovy" id="3c14922f-1d36-43a5-a38d-7e8afac1b492">
+
+<con:settings/>
+
+
+-<con:config>
+
+
+-<script>
+
+<![CDATA[//************************************************************************************************************************************************** //The following code compares each node from the Data Source_response steps to its expected result from the P4 sheet and logs the result def timestamp = new Date() //def directory = "c:\\temp" def directory = context.expand( '${#TestCase#ResultsFileLocation}' ) //Create the results filto write to - Want to name file based on Web Service name and Sprint //This can be done with Global Properties or TestCase Propoerties but I need more info on how these are organized and executed //I have them implemented here as Project Properties for demo purposes webServiceShortName = context.webServiceName.substring(0,context.webServiceName.indexOf("_")) def resultFile = new File(directory, "Results_Rel" + context.expand( '${#TestCase#Release}' ) +"_S" + context.expand( '${#TestCase#Sprint}' ) + '_' + webServiceShortName + "_" + context.expand( '${#TestCase#Environment}' ) + ".txt") def testCase = context.expand( '${P1Properties#ApplicationID}' ) if (testCase == ""){ testCase = context.expand( '${P1Properties#ScenarioID}' ) } //Write the prolog info,the Request, and the Response to the results file //P1 sheet must have a column labeled TestCase resultFile.append( '------------------------------------------------------------------------------\r\n' ) resultFile.append( 'Web Service: ' + webServiceShortName + ' Test Case: ' + testCase + '\r\n' + 'Release: ' + context.expand( '${#TestCase#Release}' ) + ' Sprint: ' + context.expand( '${#TestCase#Sprint}' ) + ' Runtime: ' + timestamp + '\r\nEnvironment: ' + context.expand( '${#TestCase#Environment}' ) +' Endpoint: ' + context.expand( '${' + context.webServiceName + '#Endpoint}' ) + '\r\n' ) resultFile.append( '------------------------------------------------------------------------------\r\n' ) // Print the request and response to the results file //def request = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Request") requestRef = context.webServiceName + "#Request" //"IFSV#Request" def request = context.expand( '${' + requestRef + '}' ) //Option to create a test step for each request that has been executed, helps with troubleshooting defects later. //If a step does not exist with the test case name, clone the request, rename it to the testCase being executed and save the request to the Request property if (context.expand( '${#TestCase#GenerateRequestForEachTestCase(Y/N)}' ) == "Y" ){ if (testRunner.testCase.getTestStepByName(testCase) == null){ context.requestStep = testRunner.testCase.getTestStepByName(context.webServiceName) context.requestStep.clone(testRunner.testCase, testCase) testRunner.testCase.getTestStepByName( testCase ).disabled = true }// end if (testRunner.testCase.getTestStepByName(testCase) == null) testRunner.testCase.testSteps[testCase].setPropertyValue("Request", request) }// endif (GenerateRequestForEachTestCase(Y/N) == "Y") def response = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Response") resultFile.append('REQUEST:\r\n'+ request + '\r\n\r\n' ) resultFile.append('RESPONSE:\r\n'+ response + '\r\n\r\n' ) def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context ) def holder = groovyUtils.getXmlHolder(response) log.info holder //Get the list of the properties from th P4 worksheet that need to be validated def propertiesStepP4 = testRunner.testCase.getTestStepByName("P4Properties") //Get the value of Namespace variable from the Test Case Properties def namespace = context.expand( '${ResponseNamespaceProperties#Namespace1}' ) //This is here onlky to initialize the variable and set the context // Some services require special processin to properly identify the nodes for validation // Those which do not are handled by the default case which just looks for the node named the same as the column header. switch ( context.webServiceName ) { case "H14-ESIMEC_TestRequest": case "ESIMEC_TestRequest": log.info "Default case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result i=0 for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop.toUpperCase() != "APPLICATIONID" && prop.toUpperCase() != "PERSONID"){ //Do not do any validation of empty cells or ApplicationID def nodeNameArr = prop.split(/>/) arrSize = nodeNameArr.size() if (arrSize > 1){ if (nodeNameArr[0] == "StartDate"){ propNode = "StartDate//*:Date" } if (nodeNameArr[0] == "EndDate"){ propNode = "EndDate//*:Date" } } else { propNode = prop } if (nodeNameArr[0] == "EmployeePremiumAmount"){ propNode = "EmployeePremiumAmount//*:InsurancePremiumAmount" } if (nodeNameArr[0] == "FamilyPremiumAmount"){ propNode = "FamilyPremiumAmount//*:InsurancePremiumAmount" } //Test for multiple instances of data nodeNameArr = propNode.split(/_/) arrSize = nodeNameArr.size() if (arrSize > 1) propNode = "//*:" + nodeNameArr[0] + '[' + nodeNameArr[1] + ']' //Node name with istance converted to bracketed number else propNode = "//*:" + nodeNameArr[0] boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) break //end case ESIMEC case "H31-NonESIMEC_TestRequest": case "NonESIMEC_TestRequest": //log.info "NonESIMEC case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result //i=0 def orgCounter = 0 def lastOrgName = "" def orgInstance = 0 for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){ //Do not do any validation of empty cells or ApplicationID def nodeNameArr = prop.split(/>/) arrSize = nodeNameArr.size() if (arrSize == 3){ propNode = "//*:" + nodeNameArr[2] //Node name plus instance, if any } if (arrSize == 2){ propNode = "//*:" + nodeNameArr[1] //Node name plus instance, if any } if (arrSize == 1){ propNode = "//*:" + prop } //Test for Organization Name node if (propNode == "//*:OrganizationCode"){ //orgCounter++ def Nodes = holder.getDomNodes("//*:OtherCoverage/*:OrganizationCode") noOfOrgs = Nodes.size() log.info "noOfOrgs = " + noOfOrgs for (x=1; x<=noOfOrgs; x++) { orgNodeValue = holder.getNodeValue("//*:OtherCoverage[" + x + "]/*:OrganizationCode") if (nodeNameArr[0] == orgNodeValue) { orgInstance = x break }// end if (orgName == orgNodeValue) }// end for (int x=1, x<=noOfOrgs, x++) lastOrgName = nodeNameArr[0] }// end if (propNode == "//*:OrganizationCode") if (nodeNameArr[0] == lastOrgName){ //get collection of nodes that match and then validate the array element subscript equal to orgInstance //propNode = "//*:OtherCoverage[" + orgInstance + "]" + (propNode - "/") //xpath to the correct instance of OtherCoverage propNode = "//*:OtherCoverage[" + orgInstance + "]" + (propNode) //xpath to the correct instance of OtherCoverage //Special path for the Insurnace effective and end dat nodes //Test for nodeNameArr[1] contains "InsuranceEffectiveDate". If so, build correct //*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date xpath //Do same for InsurnaceEndDate containsSubstring = nodeNameArr[1].indexOf("InsuranceEffectiveDate") if (containsSubstring != -1){ //get insurnaceInstance from nodeNameArr[1] insuranceArr = nodeNameArr[1].split(/_/) insuranceInstance = insuranceArr[1] propNode = "//*:OtherCoverage[" + orgInstance + "]" + "/*:MECCoverage/*:Insurance[" + insuranceInstance + "]//*:InsuranceEffectiveDate/*:Date" //propNode = "//*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date" }// end if (containsSubstring != -1) containsSubstring = nodeNameArr[1].indexOf("InsuranceEndDate") if (containsSubstring != -1){ //get insurnaceInstance from nodeNameArr[1] insuranceArr = nodeNameArr[1].split(/_/) insuranceInstance = insuranceArr[1] propNode = "//*:OtherCoverage[" + orgInstance + "]" + "/*:MECCoverage/*:Insurance[" + insuranceInstance + "]//*:InsuranceEndDate/*:Date" //propNode = "//*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date" }//end if (containsSubstring != -1) }// end if (nodeNameArr[0] == lastOrgName) //log.info "propNode xpath = " + propNode boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) break //end case "NonESIMEC": case "IFSV_TestRequest": case "H9-IFSV_TestRequest": log.info "IFSV case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result //Need values from the ReadNextLine script to tell me the order and type of applicants //ie an array context.ApplicantTypeArr that shows PRIMARY, SPOUSE, DEPENDENT, PRIMARY, DEPENDENT lastApplicantInstance = 0 applicantNodeInstance = 0 dependentNodeInstance = 0 noOfApplicants = context.ApplicantTypeArr.size() log.info "noOfApplicants = " + noOfApplicants for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){ //Do not do any validation of empty cells or ApplicationID //As I traverse the properties, check value of TaxFilerCategoryCode. //For each Primary or Spouse, increment the instance for ApplicantVerification node //For each Dependent, increment the instance of DependentVerification node def nodeNameArr = prop.split(/_/) arrSize = nodeNameArr.size() //if arrSize = nodeNameArr.size() if (arrSize == 1){ propNode = "//*:" + prop }// end if (arrSize == 1) else { if (nodeNameArr[1].toInteger() <= noOfApplicants && nodeNameArr[1].toInteger() != lastApplicantInstance ){ lastApplicantInstance++ //applicantType = context.ApplicantTypeArr[lastApplicantInstance] applicantType = context.ApplicantTypeArr[nodeNameArr[1].toInteger()-1] if (applicantType == "PRIMARY" || applicantType == "SPOUSE"){ applicantNodeInstance++ }// end if (applicantType == "PRIMARY" || applicantType == "SPOUSE") if (applicantType == "DEPENDENT"){ dependentNodeInstance++ }// end if (applicantType == "DEPENDENT") }//end if (nodeNameArr[1] <= noOfApplicants) if (applicantType == "PRIMARY" || applicantType == "SPOUSE"){ propNode = "//*:ApplicantVerification[" + applicantNodeInstance + "]//*:" + nodeNameArr[0] if (nodeNameArr[0] == "SpouseTINIdentification"){ propNode = "//*:ApplicantVerification[" + applicantNodeInstance + "]//*:SpouseTaxFiler//*:TINIdentification" }// end if (nodeNameArr[0] == "SpouseTINIdentification") }// end if (applicantType == "PRIMARY" || applicantType == "SPOUSE") if (applicantType == "DEPENDENT"){ propNode = "//*:DependentVerification[" + dependentNodeInstance + "]//*:" + nodeNameArr[0] if (nodeNameArr[0] == "SpouseTINIdentification"){ propNode = "//*:DependentVerification[" + dependentNodeInstance + "]//*:SpouseTaxFiler//*:TINIdentification" }// end if (nodeNameArr[0] == "SpouseTINIdentification") }// end if (applicantType == "DEPENDENT") }// end else boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) break //end case "NonESIMEC": default: log.info "Default case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result i=0 for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop != "ApplicationID" && prop != "PersonID" && prop != "ScenarioID"){ //Do not do any validation of empty cells or ApplicationID def nodeNameArr = prop.split(/>/) arrSize = nodeNameArr.size() if (arrSize == 3){ propNode = "//*:" + nodeNameArr[2] //Node name plus instance, if any } if (arrSize == 2){ propNode = "//*:" + nodeNameArr[1] //Node name plus instance, if any } if (arrSize == 1){ propNode = "//*:" + prop } //log.info "propNode xpath = " + propNode boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) }// end switch ( context.webServiceName ) { \ //The following is the results reporting code resultFile.append('\r\n') //testRunner.gotoStep(1) testRunner.gotoStepByName( "Run_ReadNextLine" )]]>
+
+</script>
+
+</con:config>
+
+</con:testStep>
+
+
+-<con:testStep name="TearDownScript" type="groovy">
+
+<con:settings/>
+
+
+-<con:config>
+
+<script>//The following teardown script deletes all of the properties from P1Properties and P4Properies steps //If all the column headers are correct and do not change, this is not necessary. //For debugging, thi scan be commented out so that the property values can be viewed at the end of the run i=0 def propertiesStep = testRunner.testCase.getTestStepByName("P1Properties") for( prop in propertiesStep.propertyNames ) { //cellVal = sourceRowP1.getCell(i) testRunner.testCase.testSteps["P1Properties"].removeProperty( prop ) i++ } //Iterate over each property in the P4 collection remove it i=0 propertiesStep = testRunner.testCase.getTestStepByName("P4Properties") for( prop in propertiesStep.propertyNames ) { //cellVal = sourceRowP4.getCell(i) testRunner.testCase.testSteps["P4Properties"].removeProperty( prop ) i++ } //The following code resets the request to the original request in case repeating nodes have been added def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context ) //def originalRequest = context.expand( '${#TestCase#OriginalRequest}' ) def holder = groovyUtils.getXmlHolder(context.expand( '${#TestCase#OriginalRequest}' )) def testSteps = context.testCase.getTestStepList() def FoundIt = "FALSE" for( step in testSteps )//Defines a collection of the steps in the test case { def properties = testRunner.testCase.getTestStepByName(step.name)//Defines a collection of the properties for the current test case step from the outer for for( prop in properties.propertyNames ) { if (prop == "Request"){ webServiceName = step.name FoundIt = "TRUE" log.info 'Found it ' + webServiceName break }//endif }//end for if (FoundIt == "TRUE") break }//end for testRunner.testCase.testSteps[webServiceName].setPropertyValue("Request", holder.xml) </script>
+
+</con:config>
+
+</con:testStep>
+
+
+-<con:testStep disabled="true" name="P1Properties" type="properties">
+
+<con:settings/>
+
+
+-<con:config xsi:type="con:PropertiesStep" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" saveFirst="true">
+
+<con:properties/>
+
+</con:config>
+
+</con:testStep>
+
+
+-<con:testStep disabled="true" name="P4Properties" type="properties">
+
+<con:settings/>
+
+
+-<con:config xsi:type="con:PropertiesStep" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" saveFirst="true">
+
+<con:properties/>
+
+</con:config>
+
+</con:testStep>
+
+
+-<con:testStep name="Validate(old)" type="groovy">
+
+<con:settings/>
+
+
+-<con:config>
+
+
+-<script>
+
+<![CDATA[//************************************************************************************************************************************************** //The following code compares each node from the Data Source_response steps to its expected result from the P4 sheet and logs the result def timestamp = new Date() //def directory = "c:\\temp" def directory = context.expand( '${#TestCase#ResultsFileLocation}' ) //Create the results filto write to - Want to name file based on Web Service name and Sprint //This can be done with Global Properties or TestCase Propoerties but I need more info on how these are organized and executed //I have them implemented here as Project Properties for demo purposes def resultFile = new File(directory, "Results_Sprint" + context.expand( '${#Project#Sprint}' ) + '_' + context.expand( '${#Project#Environment}' ) + ".txt") def testCase = context.expand( '${P1Properties#ApplicationID}' ) //Write the prolog info,the Request, and the Response to the results file //P1 sheet must have a column labeled TestCase resultFile.append( '------------------------------------------------------------------------------------\r\n' ) resultFile.append( 'Web Service: ' + context.webServiceName + ' Test Case: ' + testCase + ' Runtime: ' + timestamp + '\r\n' + 'Sprint: ' + context.expand( '${#Project#Sprint}' ) + ' Environment: ' + context.expand( '${' + context.webServiceName + '#Endpoint}' ) + '\r\n' ) resultFile.append( '------------------------------------------------------------------------------------\r\n' ) // Print the request and response to the results file //def request = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Request") requestRef = context.webServiceName + "#Request" //"IFSV#Request" def request = context.expand( '${' + requestRef + '}' ) //Option to create a test step for each request that has been executed, helps with troubleshooting defects later. //If a step does not exist with the test case name, clone the request, rename it to the testCase being executed and save the request to the Request property if (context.expand( '${#TestCase#GenerateRequestForEachTestCase(Y/N)}' ) == "Y" ){ if (testRunner.testCase.getTestStepByName(testCase) == null){ context.requestStep = testRunner.testCase.getTestStepByName(context.webServiceName) context.requestStep.clone(testRunner.testCase, testCase) testRunner.testCase.getTestStepByName( testCase ).disabled = true }// end if (testRunner.testCase.getTestStepByName(testCase) == null) testRunner.testCase.testSteps[testCase].setPropertyValue("Request", request) }// endif (GenerateRequestForEachTestCase(Y/N) == "Y") def response = testRunner.testCase.testSteps[context.webServiceName].getPropertyValue("Response") resultFile.append('REQUEST:\r\n'+ request + '\r\n\r\n' ) resultFile.append('RESPONSE:\r\n'+ response + '\r\n\r\n' ) def groovyUtils = new com.eviware.soapui.support.GroovyUtils( context ) def holder = groovyUtils.getXmlHolder(response) log.info holder //Get the list of the properties from th P4 worksheet that need to be validated def propertiesStepP4 = testRunner.testCase.getTestStepByName("P4Properties") //Get the value of Namespace variable from the Test Case Properties def namespace = context.expand( '${ResponseNamespaceProperties#Namespace1}' ) //This is here onlky to initialize the variable and set the context // Some services require special processin to properly identify the nodes for validation // Those which do not are handled by the default case which just looks for the node named the same as the column header. switch ( context.webServiceName ) { case "ESIMEC_TestRequest": log.info "Default case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result i=0 for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop.toUpperCase() != "APPLICATIONID" && prop.toUpperCase() != "PERSONID"){ //Do not do any validation of empty cells or ApplicationID def nodeNameArr = prop.split(/>/) arrSize = nodeNameArr.size() if (arrSize > 1){ if (nodeNameArr[0] == "StartDate"){ propNode = "StartDate//*:Date" } if (nodeNameArr[0] == "EndDate"){ propNode = "EndDate//*:Date" } } else { propNode = prop } if (nodeNameArr[0] == "EmployeePremiumAmount"){ propNode = "EmployeePremiumAmount//*:InsurancePremiumAmount" } if (nodeNameArr[0] == "FamilyPremiumAmount"){ propNode = "FamilyPremiumAmount//*:InsurancePremiumAmount" } //Test for multiple instances of data nodeNameArr = propNode.split(/_/) arrSize = nodeNameArr.size() if (arrSize > 1) propNode = "//*:" + nodeNameArr[0] + '[' + nodeNameArr[1] + ']' //Node name with istance converted to bracketed number else propNode = "//*:" + nodeNameArr[0] boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) break //end case ESIMEC case "NonESIMEC_TestRequest": //log.info "NonESIMEC case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result //i=0 def orgCounter = 0 def lastOrgName = "" def orgInstance = 0 for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){ //Do not do any validation of empty cells or ApplicationID def nodeNameArr = prop.split(/>/) arrSize = nodeNameArr.size() if (arrSize == 3){ propNode = "//*:" + nodeNameArr[2] //Node name plus instance, if any } if (arrSize == 2){ propNode = "//*:" + nodeNameArr[1] //Node name plus instance, if any } if (arrSize == 1){ propNode = "//*:" + prop } //Test for Organization Name node if (propNode == "//*:OrganizationCode"){ //orgCounter++ def Nodes = holder.getDomNodes("//*:OtherCoverage/*:OrganizationCode") noOfOrgs = Nodes.size() log.info "noOfOrgs = " + noOfOrgs for (x=1; x<=noOfOrgs; x++) { orgNodeValue = holder.getNodeValue("//*:OtherCoverage[" + x + "]/*:OrganizationCode") if (nodeNameArr[0] == orgNodeValue) { orgInstance = x break }// end if (orgName == orgNodeValue) }// end for (int x=1, x<=noOfOrgs, x++) lastOrgName = nodeNameArr[0] }// end if (propNode == "//*:OrganizationCode") if (nodeNameArr[0] == lastOrgName){ //get collection of nodes that match and then validate the array element subscript equal to orgInstance //propNode = "//*:OtherCoverage[" + orgInstance + "]" + (propNode - "/") //xpath to the correct instance of OtherCoverage propNode = "//*:OtherCoverage[" + orgInstance + "]" + (propNode) //xpath to the correct instance of OtherCoverage //Special path for the Insurnace effective and end dat nodes //Test for nodeNameArr[1] contains "InsuranceEffectiveDate". If so, build correct //*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date xpath //Do same for InsurnaceEndDate containsSubstring = nodeNameArr[1].indexOf("InsuranceEffectiveDate") if (containsSubstring != -1){ //get insurnaceInstance from nodeNameArr[1] insuranceArr = nodeNameArr[1].split(/_/) insuranceInstance = insuranceArr[1] propNode = "//*:OtherCoverage[" + orgInstance + "]" + "/*:MECCoverage/*:Insurance[" + insuranceInstance + "]//*:InsuranceEffectiveDate/*:Date" //propNode = "//*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date" }// end if (containsSubstring != -1) containsSubstring = nodeNameArr[1].indexOf("InsuranceEndDate") if (containsSubstring != -1){ //get insurnaceInstance from nodeNameArr[1] insuranceArr = nodeNameArr[1].split(/_/) insuranceInstance = insuranceArr[1] propNode = "//*:OtherCoverage[" + orgInstance + "]" + "/*:MECCoverage/*:Insurance[" + insuranceInstance + "]//*:InsuranceEndDate/*:Date" //propNode = "//*:OtherCoverage[x]/*:MECCoverage/*:Insurance[x]//*:InsuranceEffectiveDate/*:Date" }//end if (containsSubstring != -1) }// end if (nodeNameArr[0] == lastOrgName) //log.info "propNode xpath = " + propNode boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) break //end case "NonESIMEC": case "IFSV_TestRequest": log.info "IFSV case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result //Need values from the ReadNextLine script to tell me the order and type of applicants //ie an array context.ApplicantTypeArr that shows PRIMARY, SPOUSE, DEPENDENT, PRIMARY, DEPENDENT lastApplicantInstance = 0 applicantNodeInstance = 0 dependentNodeInstance = 0 noOfApplicants = context.ApplicantTypeArr.size() log.info "noOfApplicants = " + noOfApplicants for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){ //Do not do any validation of empty cells or ApplicationID //As I traverse the properties, check value of TaxFilerCategoryCode. //For each Primary or Spouse, increment the instance for ApplicantVerification node //For each Dependent, increment the instance of DependentVerification node def nodeNameArr = prop.split(/_/) arrSize = nodeNameArr.size() //if arrSize = nodeNameArr.size() if (arrSize == 1){ propNode = "//*:" + prop }// end if (arrSize == 1) else { if (nodeNameArr[1].toInteger() <= noOfApplicants && nodeNameArr[1].toInteger() != lastApplicantInstance ){ lastApplicantInstance++ //applicantType = context.ApplicantTypeArr[lastApplicantInstance] applicantType = context.ApplicantTypeArr[nodeNameArr[1].toInteger()-1] if (applicantType == "PRIMARY" || applicantType == "SPOUSE"){ applicantNodeInstance++ }// end if (applicantType == "PRIMARY" || applicantType == "SPOUSE") if (applicantType == "DEPENDENT"){ dependentNodeInstance++ }// end if (applicantType == "DEPENDENT") }//end if (nodeNameArr[1] <= noOfApplicants) if (applicantType == "PRIMARY" || applicantType == "SPOUSE"){ propNode = "//*:ApplicantVerification[" + applicantNodeInstance + "]//*:" + nodeNameArr[0] if (nodeNameArr[0] == "SpouseTINIdentification"){ propNode = "//*:ApplicantVerification[" + applicantNodeInstance + "]//*:SpouseTaxFiler//*:TINIdentification" }// end if (nodeNameArr[0] == "SpouseTINIdentification") }// end if (applicantType == "PRIMARY" || applicantType == "SPOUSE") if (applicantType == "DEPENDENT"){ propNode = "//*:DependentVerification[" + dependentNodeInstance + "]//*:" + nodeNameArr[0] if (nodeNameArr[0] == "SpouseTINIdentification"){ propNode = "//*:DependentVerification[" + dependentNodeInstance + "]//*:SpouseTaxFiler//*:TINIdentification" }// end if (nodeNameArr[0] == "SpouseTINIdentification") }// end if (applicantType == "DEPENDENT") }// end else boolean nodeNotFound = true def Node = holder.getDomNode(propNode) if (Node != null) { actualVal = holder.getNodeValue(propNode) log.info "Node found, Actual value is: " + actualVal nodeNotFound = false }//end if (Node != null) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) break //end case "NonESIMEC": default: log.info "Default case" //Compare the expected (P4Properties) to the actual (properties from the DataSource_Response step and print result i=0 for( prop in propertiesStepP4.propertyNames ) { def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop) if (expVal != "" && prop != "ApplicationID" && prop != "PersonID"){ //Do not do any validation of empty cells or ApplicationID def nodeNameArr = prop.split(/>/) arrSize = nodeNameArr.size() if (arrSize > 1){ propNode = nodeNameArr[1] //Node name plus instance, if any } else { propNode = prop } //Test for multiple instances of data nodeNameArr = propNode.split(/_/) arrSize = nodeNameArr.size() if (arrSize > 1) propNode = nodeNameArr[0] + '[' + nodeNameArr[1] + ']' //Node name with istance converted to bracketed number else propNode = nodeNameArr[0] def namespacePropertiesStep = testRunner.testCase.getTestStepByName("ResponseNamespaceProperties") //for loop builds a string to declare all the namespaces in the response //strAllNamespaces = "declare namespace ns1='http://aptc.dsh.cms.gov/exchange/1.0'; declare namespace ns2='http://hix.cms.gov/0.1/hix-core'; declare namespace ns3='http://aptc.dsh.cms.gov/extension/1.0'; declare namespace ns4='http://hix.cms.gov/0.1/hix-ee'; " countNamespaces = 1 strAllNamespaces = "" for( nsProp in namespacePropertiesStep.propertyNames ) { namespace = context.expand( '${ResponseNamespaceProperties#' + nsProp + '}' ) strAllNamespaces = strAllNamespaces + "declare namespace ns" + countNamespaces + "=" + namespace + "; " //log.info strAllNamespaces countNamespaces++ }// end for( nsProp in namespacePropertiesStep.propertyNames ) //for loop cycles through each namespace reference until it finds the node - sets flag if nodeNotFound flag to false if not found boolean nodeNotFound = true for (int j = 1; j < countNamespaces; j++) { //def Node = holder.getDomNode(strAllNamespaces + "//ns" + j + ":" + prop) def Node = holder.getDomNode(strAllNamespaces + "//ns" + j + ":" + propNode) if (Node != null) { //actualVal = holder.getNodeValue(strAllNamespaces + "//ns" + j + ":" + prop) actualVal = holder.getNodeValue(strAllNamespaces + "//ns" + j + ":" + propNode) //log.info "Node found, Actual value is: " + actualVal nodeNotFound = false break }//end if (Node != null) }// end for (int j = 1; j < countNamespaces; j++) if (nodeNotFound) {actualVal = "Node not found"} if (actualVal == "Node not found") { resultFile.append('\r\nMANUAL ' + prop + ' Expected: '+ expVal + '\r\n') }// end if (actualVal == "Node not found") else { if (expVal != actualVal ) { resultFile.append('\r\nFAIL Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } if (expVal == actualVal && context.expand( '${#TestCase#ReportExceptionsOnly(Y/N)}' ) == "N" ) { resultFile.append('\r\nPASS Element: ' + prop + ' Expected: '+ expVal + ' Actual: ' + actualVal + '\r\n') } }// end else } // end if (expVal != ""){ } // end for( prop in propertiesStepP4.propertyNames ) }// end switch ( context.webServiceName ) { \ //The following is the results reporting code resultFile.append('\r\n') //testRunner.gotoStep(1) testRunner.gotoStepByName( "Run_ReadNextLine" )]]>
+
+</script>
+
+</con:config>
+
+</con:testStep>
+
+<con:setupScript/>
+
+<con:tearDownScript/>
+
+
+-<con:properties>
+
+
+-<con:property>
+
+<con:name>ExcelFile</con:name>
+
+<con:value/>
+
+</con:property>
+
+
+-<con:property>
+
+<con:name>ResultsFileLocation</con:name>
+
+<con:value>C:\temp</con:value>
+
+</con:property>
+
+
+-<con:property>
+
+<con:name>GenerateRequestForEachTestCase(Y/N)</con:name>
+
+<con:value>N</con:value>
+
+</con:property>
+
+
+-<con:property>
+
+<con:name>ReportExceptionsOnly(Y/N)</con:name>
+
+<con:value>N</con:value>
+
+</con:property>
+
+</con:properties>
+
+<con:reportParameters/>
+
+
+-<con:breakPoints>
+
+<con:testStepId>d784dcd4-384b-4e22-8451-5be176612644</con:testStepId>
+
+<con:status>NONE</con:status>
+
+<con:properties/>
+
+</con:breakPoints>
+
+
+-<con:breakPoints>
+
+<con:testStepId>914d9e16-cd3f-47ec-88e0-edcbfa9f097c</con:testStepId>
+
+<con:status>NONE</con:status>
+
+<con:properties/>
+
+</con:breakPoints>
+
+
+-<con:breakPoints>
+
+<con:testStepId>c07a9c03-6d89-4958-8776-1c11603b0e81</con:testStepId>
+
+<con:status>NONE</con:status>
+
+<con:properties/>
+
+</con:breakPoints>
+
+
+-<con:breakPoints>
+
+<con:testStepId>3c14922f-1d36-43a5-a38d-7e8afac1b492</con:testStepId>
+
+<con:status>NONE</con:status>
+
+<con:properties/>
+
+</con:breakPoints>
+
+</con:testCase>

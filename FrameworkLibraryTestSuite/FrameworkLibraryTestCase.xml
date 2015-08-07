@@ -429,6 +429,7 @@ def namespace = context.expand( '${ResponseNamespaceProperties#Namespace1}' ) //
 
 // Some services require special processin to properly identify the nodes for validation
 // Those which do not are handled by the default case which just looks for the node named the same as the column header.
+
 for( prop in propertiesStepP4.propertyNames )
 {
 	def expVal = testRunner.testCase.testSteps["P4Properties"].getPropertyValue(prop)
